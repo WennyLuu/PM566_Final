@@ -1,1 +1,20 @@
-
+name: "my-website"
+output_dir: "."
+navbar:
+  title: "PM566 Final Project"
+  left:
+    - text: "Home"
+      href: index.html
+    - text: "Tables"
+      href: tables.html      
+    - text: "About"
+      href: about.html
+  right:
+    - icon: fa-github fa-lg
+      href: https://github.com/WennyLuu/PM566_Final
+    - text: "PM566 Home"
+      href: https://uscbiostats.github.io/PM566/
+output:
+  html_document:
+    theme: flatly
+    css: styles.css
