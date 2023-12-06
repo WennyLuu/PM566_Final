@@ -8,3 +8,230 @@ output:
 ---
 
 This is my PM566 Final Project website.
+
+<br>
+
+#### *Link to my written report:      [[Download]](https://github.com/WennyLuu/PM566_Final/blob/main/PM566_Final_Report.pdf)*
+
+<br>
+
+## **Research Question**
+
+What is the relationship between influenza vaccination coverage and Pneumonia and Influenza (P&I) mortality rates by state in the United States during 2009 to 2019? 
+
+<br>
+
+## **Why Study this?**
+
+The objective of this study is to examine the relationship between influenza vaccination coverage and P&I mortality rates during the specified time frame. Understanding this relationship can provide insights into the effectiveness of vaccination programs and the impact of vaccination on P&I-related mortality. It also allows for an assessment of geographic variations, highlighting areas with successful vaccination programs and areas where improvements may be needed.
+
+<br>
+
+## **Dataset Description**
+
+There are two datasets included in this analysis:
+
+- Pneumonia and Influenza (P&I) Deaths Data comes from National Center For Health Statistics Mortality Surveillance System (NCHS), a division of the Centers for Disease Control and Prevention (CDC).
+    
+- Influenza Vaccinations Coverage Data comes from the National Immunization Survey-Flu (NIS-Flu) and the Behavioral Risk Factor Surveillance System (BRFSS).
+
+<br>
+
+## **Interactive Visualizations**
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE, include=FALSE}
+
+library(data.table)
+library(dplyr)
+library(tidyverse)
+library(leaflet)
+library(dtplyr)
+library(knitr)
+library(ggplot2)
+library(lubridate)
+library(usmap)
+library(plotly)
+library(DT)
+
+```
+
+```{r, include=FALSE} 
+knitr::opts_chunk$set(
+  warning = FALSE,
+  message = FALSE,
+  eval=TRUE,
+  echo = TRUE,
+  cache = FALSE,
+  fig.width = 7, 
+  fig.align = 'center',
+  fig.asp = 0.618,
+  out.width = "700px",
+options(repos = c(CRAN = "http://cran.rstudio.com")))
+```
+
+```{r, include=FALSE}
+## Read in data
+death_dat <- data.table::fread("~/Desktop/PM566/DATA/Deaths_from_P&I.csv")
+vac_dat <- data.table::fread("~/Desktop/PM566/DATA/Vaccination.csv")
+
+## Check the data 
+
+```
+
+```{r, include=FALSE}
+## Rename some variables
+death_dat <- as_tibble(death_dat)
+vac_dat <- as_tibble(vac_dat)
+
+death_dat <- death_dat[which(death_dat$geoid == "State"), c(3, 5, 9, 11)]
+names(death_dat) <- c("state", "season", "deaths_num", "deaths_prop" )
+
+vac_dat <- vac_dat[which(vac_dat$'Geography Type' == "States/Local Areas" & vac_dat$'Dimension Type' == "Age"), c(3, 5, 8, 9, 11)]
+names(vac_dat) <- c("state", "season", "age_group", "vac_prop", "sample_size" )
+vac_dat <- vac_dat[!(vac_dat$season %in% c("2019-20","2020-21", "2021-22", "2022-23")), ]
+
+
+## combine age groups: 0-18, 18-65 and 65+
+vac_dat <- as.data.table(vac_dat)
+vac_dat[, age_group := fifelse(
+  age_group %in% c("6 Months - 17 Years","≥6 Months", "13-17 Years","5-12 Years", 
+                   "6 Months - 4 Years"), "0~18 Years",
+  fifelse(age_group == "≥65 Years" , "65+ Years",
+          fifelse(age_group %in% c("18-49 Years at High Risk", "18-49 Years", 
+                                   "18-64 Years not at High Risk", "18-64 Years",
+                                   "18-64 Years at High Risk", "18-49 Years not at High Risk","≥18 Years", "50-64 Years", "25-64 Years not in Initial Target Group", "25-64 Years at High Risk", "6 Months - 64 Years at High Risk (Initial Target Group)"), "18~65 Years", age_group)
+          )
+  )
+  ]
+
+## Impute missing values as mean or mode
+death_dat$deaths_num[is.na(death_dat$deaths_num)] <- mean(death_dat$deaths_num, na.rm=TRUE)
+death_dat$deaths_prop[is.na(death_dat$deaths_prop)] <- mean(death_dat$deaths_prop, na.rm=TRUE)
+
+vac_dat <- vac_dat[!(vac_dat$vac_prop %in% c("NR †", "NR *", "NR")), ]
+vac_dat$vac_prop <- as.numeric(vac_dat$vac_prop)
+vac_dat$vac_prop[is.na(vac_dat$vac_prop)] <- mean(vac_dat$vac_prop, na.rm=TRUE)
+
+## Caculate some values
+vac_dat$sample_size <- as.numeric(vac_dat$sample_size)
+vac_dat$vac_num <- round(vac_dat$vac_prop / 100 * vac_dat$sample_size)
+
+```
+
+```{r, include=FALSE}
+## Wrangle the data
+vac_dat <- vac_dat %>% 
+  group_by(state, season, age_group) %>% 
+  mutate(
+    vac_prop = mean(vac_prop),
+    sample_size = mean(sample_size),
+    vac_num = round(vac_num, 1)
+  )
+vac_dat <- distinct(vac_dat)
+
+death_dat <- death_dat %>% 
+  group_by(state, season) %>% 
+  mutate(
+    deaths_prop = round(mean(deaths_prop), 2),
+    deaths_num = round(sum(deaths_num), 1)
+  )
+death_dat <- distinct(death_dat)
+
+combined_dat <- merge(vac_dat, death_dat, 
+                       by = c("state", "season"), 
+                       all.x = TRUE, all.y = FALSE
+                      )
+
+combined_dat$deaths_num[is.na(combined_dat$deaths_num)] <- mean(combined_dat$deaths_num, na.rm=TRUE)
+combined_dat$deaths_prop[is.na(combined_dat$deaths_prop)] <- mean(combined_dat$deaths_prop, na.rm=TRUE)
+
+```
+
+<br>
+
+### 1.Yearly Fluctuations of P&I (Pneumonia and Influenza) death rates and flu vaccination rates
+
+```{r, out.width ="75%", out.height= "75%", echo=FALSE}
+f3 <- ggplot(combined_dat, aes(x = season)) +
+  geom_point(aes(y = deaths_prop, color = "Deaths Proportion (%)"), size = 3) +
+  geom_point(aes(y = vac_prop, color = "Vaccination Proportion (%)"), size = 3) +
+  scale_color_manual(
+    values = c("Deaths Proportion (%)" = "blue",  "Vaccination Proportion (%)" = "red"),
+    name = "") +
+  ggtitle("Fully Flu Vaccination and P&I Deaths Proportion by Year(2009-2019)") +
+  labs(
+    x = "Year",
+    y = "Proportion (%)",
+    color = "Legend"
+  ) + 
+  theme(legend.position = "top") +
+  scale_y_continuous(breaks = seq(0, 70, by = 10))
+
+```
+
+## {.tabset}
+
+### Yearly Fluctuations
+
+```{r echo=FALSE}
+ggplotly(f3) 
+```
+
+## {-}
+
+The mortality rate show some variability across the years from 2009 to 2019, and the vaccination rate changed slightly, especially from 2017 to 2019 when it increased significantly.
+
+<br>
+
+### 2.The  between P&I (Pneumonia and Influenza) death rates and flu vaccination rates
+
+```{r, out.width ="75%", out.height= "75%", echo=FALSE}
+f4 <- combined_dat %>% 
+  ggplot(mapping = aes(x = vac_prop, y = deaths_prop)) + 
+  geom_point(mapping = aes(color = state)) + 
+  geom_smooth(method = lm, se = FALSE) + 
+  labs(title = "Fully Vaccination Proportion vs P&I Deaths Proportion (All States)", 
+       x  = "Vaccination proportions (%)", y = "P&I Deaths Proportion proportions (%)") +
+  theme(legend.key.width = unit(0.01, "cm"),  
+        legend.key.height = unit(0.1, "cm"),
+        legend.position = "right") +
+  guides(color = guide_legend(ncol = 2, title = NULL))
+
+```
+
+## {.tabset}
+
+### Correlation
+
+```{r echo=FALSE}
+ggplotly(f4) 
+```
+
+## {-}
+
+There is a significant positive relationship between fully Vaccination proportion and P&I deaths proportion, indicating that higher vaccination coverage tends to be associated with higher mortality rates due to pneumonia and influenza.
+
+```{r, out.width ="75%", out.height= "75%", echo=FALSE}
+cor <- combined_dat %>%
+  group_by(state) %>%
+  summarize(cor = cor(deaths_prop, vac_prop)) %>%
+  filter(!is.na(cor)) %>%
+  arrange(desc(cor))
+
+```
+
+## {.tabset}
+
+### Correlation
+
+```{r echo=FALSE}
+datatable(cor, rownames = F) 
+```
+
+## {-}
+
+Utah has the strongest positively correlation bewteen flu vaccination rates and P&I deaths rates and District of Columbia	has the strongest negatively correlation.
+
+## **Conclusion**
+
+In summary, the data suggests that there are significant state variations in P&I deaths and flu vaccination rates in the U.S. with year-to-year fluctuations. While vaccination rates have generally improved in recent years, there are some exceptions. The correlation analysis highlights that vaccination efforts can have a positive impact on reducing P&I deaths in some states. However, specific factors contributing to these trends would require further investigation.
