@@ -1,0 +1,349 @@
+---
+title: "The relationship between influenza vaccination coverage and Pneumonia and Influenza (P&I) mortality rates by state in US (2009-2019)"
+author: "Wenjia Lu"
+date: "`r Sys.Date()`"
+geometry: margin=1.9cm
+output: 
+  pdf_document: 
+    latex_engine: xelatex
+  theme: readable
+  html_document: FALSE
+header-includes:
+    - \usepackage{caption}
+    - \usepackage{fontspec}
+
+---
+
+\captionsetup[table]{labelformat=empty}
+
+```{r, include=FALSE} 
+knitr::opts_chunk$set(
+  warning = FALSE,
+  message = FALSE,
+  eval=TRUE,
+  echo = TRUE,
+  cache = FALSE,
+  out.width = "100%", 
+  fig.align = 'center',
+  class.source = "code-r",
+options(repos = c(CRAN = "http://cran.rstudio.com")))
+
+```
+
+# **Introduction**
+
+### Dataset Background:
+
+  Pneumonia and Influenza (P&I) Deaths Data comes from National Center For Health Statistics Mortality Surveillance System (NCHS), a division of the Centers for Disease Control and Prevention (CDC).
+  
+  Influenza Vaccinations Coverage Data comes from the National Immunization Survey-Flu (NIS-Flu) and the Behavioral Risk Factor Surveillance System (BRFSS).
+
+### Formulated Question:
+
+  Influenza (flu) is a contagious respiratory illness caused by influenza viruses. Seasonal flu vaccines are developed and distributed each year to help reduce the spread of the virus and mitigate its impact on public health. Vaccination is one of the primary strategies for preventing influenza.
+  
+  The objective of this study is to examine the relationship between influenza vaccination coverage and P&I mortality rates during the specified time frame. Understanding this relationship can provide insights into the effectiveness of vaccination programs and the impact of vaccination on P&I-related mortality. It also allows for an assessment of geographic variations, highlighting areas with successful vaccination programs and areas where improvements may be needed.
+
+
+# **Methods**
+
+### Data Resources
+
+Pneumonia and Influenza (P&I) Deaths Data contains information about deaths attributed to Pneumonia and Influenza (P&I) and all-cause mortality. The data is organized by state and region, allowing for a geographic analysis. It provides statistics on the number of deaths, death rates, and various demographic factors that might influence mortality rates, such as age group.
+
+Influenza Vaccinations Coverage Data provides valuable insights into the prevalence of influenza vaccination across different demographic groups and geographic regions. NIS-Flu is a program conducted by the Centers for Disease Control and Prevention (CDC). It is part of the National Immunization Survey (NIS) and focuses on influenza vaccination coverage in the United States. BRFSS is a state-based system operated by state health departments in collaboration with the CDC. It collects information on health-related behaviors, including vaccination coverage, through telephone surveys.
+
+### Variables
+
+- state: the different State names in the United States
+
+- season: the specific time period during 2009 to 2019
+
+- age_group: include <18 group, 18-65 group and 65+ group
+
+- deaths_prop: the proportion of influenza deaths in total deaths
+
+- vac_prop: the proportion of fully vaccinated individuals in the population
+
+### Clean the data
+
+In deaths data, the variables we are interested in counts of P$I deaths by state and different season. Therefore, we:
+
+- Delete the useless values
+
+- Rename some variables for convenience
+
+- Combine age groups: 0-18, 18-65 and 65+
+
+- Impute missing values with mean(numeric) or mode(categorical)
+
+- Reformat the numeric variables
+  
+### Wrangle the data
+
+Then we checked the major elements of this dataset, following with a closer look at the key variables to check for missing values and outliers. For each categorical variables, the name and order of categories were checked and corrected if necessary. Then we merge two datasets for further analysis.
+
+### Statistical methods
+
+- Descriptive analysis is done by summarizing statistics of the variables that this study concern about. 
+
+- Plots are shown by bar charts and maps, in order to have a straight forward view of the concerned variables. 
+
+- The main question of this study is explored using correlation analysis and smooth graph, based on proportion data.
+
+```{r setup, message=FALSE, echo=FALSE, warning=FALSE, include=FALSE}
+
+library(data.table)
+library(dplyr)
+library(tidyverse)
+library(leaflet)
+library(dtplyr)
+library(knitr)
+library(ggplot2)
+library(lubridate)
+library(usmap)
+
+```
+
+```{r, include=FALSE}
+## Read in data
+death_dat <- data.table::fread("~/Desktop/PM566/DATA/Deaths_from_P&I.csv")
+vac_dat <- data.table::fread("~/Desktop/PM566/DATA/Vaccination.csv")
+
+## Check the data 
+
+```
+
+```{r, include=FALSE}
+## Rename some variables
+death_dat <- as_tibble(death_dat)
+vac_dat <- as_tibble(vac_dat)
+
+death_dat <- death_dat[which(death_dat$geoid == "State"), c(3, 5, 9, 11)]
+names(death_dat) <- c("state", "season", "deaths_num", "deaths_prop" )
+
+vac_dat <- vac_dat[which(vac_dat$'Geography Type' == "States/Local Areas" & vac_dat$'Dimension Type' == "Age"), c(3, 5, 8, 9, 11)]
+names(vac_dat) <- c("state", "season", "age_group", "vac_prop", "sample_size" )
+vac_dat <- vac_dat[!(vac_dat$season %in% c("2019-20","2020-21", "2021-22", "2022-23")), ]
+
+
+## combine age groups: 0-18, 18-65 and 65+
+vac_dat <- as.data.table(vac_dat)
+vac_dat[, age_group := fifelse(
+  age_group %in% c("6 Months - 17 Years","≥6 Months", "13-17 Years","5-12 Years", 
+                   "6 Months - 4 Years"), "0~18 Years",
+  fifelse(age_group == "≥65 Years" , "65+ Years",
+          fifelse(age_group %in% c("18-49 Years at High Risk", "18-49 Years", 
+                                   "18-64 Years not at High Risk", "18-64 Years",
+                                   "18-64 Years at High Risk", "18-49 Years not at High Risk","≥18 Years", "50-64 Years", "25-64 Years not in Initial Target Group", "25-64 Years at High Risk", "6 Months - 64 Years at High Risk (Initial Target Group)"), "18~65 Years", age_group)
+          )
+  )
+  ]
+
+## Impute missing values as mean or mode
+death_dat$deaths_num[is.na(death_dat$deaths_num)] <- mean(death_dat$deaths_num, na.rm=TRUE)
+death_dat$deaths_prop[is.na(death_dat$deaths_prop)] <- mean(death_dat$deaths_prop, na.rm=TRUE)
+
+vac_dat <- vac_dat[!(vac_dat$vac_prop %in% c("NR †", "NR *", "NR")), ]
+vac_dat$vac_prop <- as.numeric(vac_dat$vac_prop)
+vac_dat$vac_prop[is.na(vac_dat$vac_prop)] <- mean(vac_dat$vac_prop, na.rm=TRUE)
+
+## Caculate some values
+vac_dat$sample_size <- as.numeric(vac_dat$sample_size)
+vac_dat$vac_num <- round(vac_dat$vac_prop / 100 * vac_dat$sample_size)
+
+```
+
+```{r, include=FALSE}
+## Wrangle the data
+vac_dat <- vac_dat %>% 
+  group_by(state, season, age_group) %>% 
+  mutate(
+    vac_prop = mean(vac_prop),
+    sample_size = mean(sample_size),
+    vac_num = round(vac_num, 1)
+  )
+vac_dat <- distinct(vac_dat)
+
+death_dat <- death_dat %>% 
+  group_by(state, season) %>% 
+  mutate(
+    deaths_prop = round(mean(deaths_prop), 2),
+    deaths_num = round(sum(deaths_num), 1)
+  )
+death_dat <- distinct(death_dat)
+
+combined_dat <- merge(vac_dat, death_dat, 
+                       by = c("state", "season"), 
+                       all.x = TRUE, all.y = FALSE
+                      )
+
+combined_dat$deaths_num[is.na(combined_dat$deaths_num)] <- mean(combined_dat$deaths_num, na.rm=TRUE)
+combined_dat$deaths_prop[is.na(combined_dat$deaths_prop)] <- mean(combined_dat$deaths_prop, na.rm=TRUE)
+
+```
+
+
+# **Results**
+
+
+### 1. Regional variations in P&I (Pneumonia and Influenza) death rates and flu vaccination rates 
+
+```{r, out.width ="75%", out.height= "75%", echo=FALSE}
+##  Conclusion  ##
+
+## Results of descriptive analysis(By State)
+combined_dat <- as.data.table(combined_dat)
+table_state <- combined_dat[ , .(
+  "P&I Deaths proportion (%)" = round(mean(deaths_prop),3),
+  "Fully Vaccined proportion (%)" = round(mean(vac_prop),3)
+),
+by = state ]
+knitr::kable(table_state, caption = "Table 1 Proportion of deaths and fully vaccined people in different states during 2009-2019")
+
+```
+Table 1 shows that the states that have the highest and lowest P&I deaths rates are Hawaii and Louisiana, which are 10.242% and 5.442%, respectively. Also, the highest and lowest proportion of flu vaccination rates are PA-Rest of state and Puerto Rico, which have 48.786% and 15.015%, respectively.
+
+```{r, out.width ="75%", out.height= "75%", echo=FALSE}
+plot_usmap(regions = 'states', 
+           data = combined_dat, 
+           values ='deaths_prop', 
+           labels = TRUE, 
+           label_color = "black") +
+  scale_fill_continuous(
+    low = "lightblue", 
+    high = "darkblue", 
+    guide = guide_colorbar(title = "Deaths Proportion (%)")) + 
+  labs(title = "Figure 1 P&I Deaths Proportion in different states in the United States") +
+  theme(legend.position = "top",
+        legend.justification = "left")
+
+```
+Figure 1 shows that Hawaii, North Dakota and California have the highest P&I deaths proportion. At the same time, Louisiana, Florida and Oregon have the lowest P&I deaths proportion.
+
+```{r, out.width ="75%", out.height= "75%", echo=FALSE}
+plot_usmap(regions = 'states', 
+           data = combined_dat, 
+           values ='vac_prop', 
+           labels = TRUE, 
+           label_color = "black") +
+  scale_fill_continuous(
+    low = "lightblue", 
+    high = "darkblue", 
+    guide = guide_colorbar(title = "Flu Vccination Proportion (%)")) + 
+  labs(title = "Figure 2 Flu Vccination Proportion in different states in the United States") +
+  theme(legend.position = "top",
+        legend.justification = "left")
+
+```
+Figure 2 shows that PA-Rest of state, NY-Rest of state and PA-Philadelphia have the highest flu vaccination proportion. At the same time, Puerto Rico, Florida and Mississippi have the lowest flu vaccination proportion.
+
+
+### 2.Yearly Fluctuations of P&I (Pneumonia and Influenza) death rates and flu vaccination rates
+
+```{r, out.width ="75%", out.height= "75%", echo=FALSE}
+## Results of descriptive analysis(By season)
+table_season <- combined_dat[ , .(
+  "P&I Deaths proportion (%)" = round(mean(deaths_prop),3),
+  "Fully Vaccined proportion (%)" = round(mean(vac_prop),3)
+),
+by = season ]
+knitr::kable(table_season, caption = "Table 2 Proportion of deaths and fully vaccined people in different years during 2009-2019 in the United States")
+
+```
+Table 2 shows that the highest and lowest P&I deaths rates are in year 2010-11 and 2015-16, which are 7.875% and 6.708%, respectively. Also, the highest and lowest proportion of vaccination rates are in year 2010-11 and 2017-18, which have 37.692% and 32.710%, respectively. 
+
+```{r, out.width ="75%", out.height= "75%", echo=FALSE}
+ggplot(combined_dat, aes(x = season)) +
+  geom_point(aes(y = deaths_prop, color = "Deaths Proportion (%)"), size = 3) +
+  geom_point(aes(y = vac_prop, color = "Vaccination Proportion (%)"), size = 3) +
+  scale_color_manual(
+    values = c("Deaths Proportion (%)" = "blue",  "Vaccination Proportion (%)" = "red"),
+    name = "") +
+  ggtitle("Figure 3 Fully Flu Vaccination and P&I Deaths Proportion by Year(2009-2019)") +
+  labs(
+    x = "Year",
+    y = "Proportion (%)",
+    color = "Legend"
+  ) + 
+  theme(legend.position = "top") +
+  scale_y_continuous(breaks = seq(0, 70, by = 10))
+
+```
+Figure 3 shows that the mortality rate show some variability across the years from 2009 to 2019, and the vaccination rate changed slightly, especially from 2017 to 2019 when it increased significantly.
+
+### 3.Age Group Vaccination Pattern
+
+```{r, out.width ="75%", out.height= "75%", echo=FALSE}
+ggplot(vac_dat, aes(x = season, y = vac_prop, fill = age_group)) + 
+  geom_bar(stat = 'identity', position = 'dodge') + 
+  labs(title = "Figure 4 Fully Flu vacctionations proprotions by Season and Age Group", 
+       x  = "Year", y = "Vaccination proportions (%)", fill = "Age group") + 
+  theme(legend.position = "top") 
+
+```
+Figure 4 shows that from 2009-2019 vaccine uptake rates pattern in different age groups are almost the same: people older than 65 years old have the largest proportion of vaccinations, people with age between 18-65 have the smallest rates.
+
+### 4.The correlation between P&I (Pneumonia and Influenza) death rates and flu vaccination rates
+
+```{r, out.width ="75%", out.height= "75%", echo=FALSE}
+combined_dat %>% 
+  ggplot(mapping = aes(x = vac_prop, y = deaths_prop)) + 
+  geom_point(mapping = aes(color = state)) + 
+  geom_smooth(method = lm, se = FALSE) + 
+  labs(title = "Figure 5 Fully Vaccination Proportion vs P&I Deaths Proportion (All States)", 
+       x  = "Vaccination proportions (%)", y = "P&I Deaths Proportion proportions (%)") +
+  theme(legend.key.width = unit(0.01, "cm"),  
+        legend.key.height = unit(0.1, "cm"),
+        legend.position = "right") +
+  guides(color = guide_legend(ncol = 2, title = NULL))
+
+```
+Figure 5 shows that there is a significant positive relationship between fully Vaccination proportion and P&I deaths proportion, indicating that higher vaccination coverage tends to be associated with higher mortality rates due to pneumonia and influenza. 
+
+```{r, out.width ="75%", out.height= "75%", echo=FALSE}
+cor <- combined_dat %>%
+  group_by(state) %>%
+  summarize(cor = cor(deaths_prop, vac_prop)) %>%
+  filter(!is.na(cor)) %>%
+  arrange(desc(cor))
+knitr::kable(cor, 
+             caption = "Table 3 Correlation of deaths and fully vaccined people during 2009-2019 in different states",
+             col.names = c("State", "Correlation"),
+             digits = 3)
+
+```
+Table 3 shows that Utah has the strongest positively correlation bewteen flu vaccination rates and P&I deaths rates and District of Columbia	has the strongest negatively correlation. 
+
+```{r, out.width ="75%", out.height= "75%", echo=FALSE}
+ggplot(combined_dat, aes(x = season, y = deaths_prop, color = vac_prop)) +
+  geom_line() +
+  geom_point() +
+  labs(
+    title = "Figure 6 Vaccination Coverage vs P&I Deaths Proportion Over Year",
+    x = "Season",
+    y = "P&I Deaths Proportion (%)",
+    color = "Vaccination Coverage (%)"
+  ) +
+  scale_color_gradient(low = "lightblue", high = "darkblue") +
+  theme_minimal() +
+  theme(legend.position = "top")
+
+```
+Figure 6 shows that the P&I deaths proportion fluctuates across seasons but generally remains between certain levels (roughly 6% to 10%). The highest vaccination coverage do not seem to align with the lowest P&I deaths proportion, suggesting that higher vaccination coverage does not necessarily correspond to lower death proportions in a straightforward or simple manner.
+
+
+# **Conclusion**
+
+1.State Variations: There are significant regional variations in P&I (Pneumonia and Influenza) death rates and flu vaccination rates in the United States. States like Hawaii have higher P&I death rates, while states like Louisiana have lower P&I death rates. Conversely, states like South Dakota have higher flu vaccination rates, while states like Florida have lower rates.
+
+2.Yearly Fluctuations: The vaccination rates are high and changed slightly, while the death rates are low and show some variability. This could imply that the vaccination efforts are effective, but a more in-depth statistical analysis would be necessary to draw any concrete conclusions.
+
+3.Age Group Vaccination Pattern: Over the years, the vaccination rates in different age groups remained fairly consistent. The highest vaccination proportions are consistently among the oldest age group (≥65 years), which is expected since older adults are often prioritized for flu vaccinations due to higher risk of complications. The next highest group appears to be children (0-18 years), which may reflect public health efforts to immunize children against the flu. Adults aged 18-65 years have the lowest proportions, which might indicate less uptake or lower prioritization within public health campaigns compared to the other groups.
+
+4.Correlation: There is a significant positive relationship between fully Vaccination proportion and P&I deaths proportion, indicating that higher vaccination coverage tends to be associated with higher mortality rates due to pneumonia and influenza. While the correlation exists, the strength varies across seasons, emphasizing the importance of considering seasonal factors. However, further investigation and consideration of confounding variables are necessary for a comprehensive understanding of the observed patterns. 
+
+
+# **Summary**
+
+In summary, the data suggests that there are significant state variations in P&I deaths and flu vaccination rates in the U.S. with year-to-year fluctuations. While vaccination rates have generally improved in recent years, there are some exceptions. The correlation analysis highlights that vaccination efforts can have a positive impact on reducing P&I deaths in some states. However, specific factors contributing to these trends would require further investigation.
