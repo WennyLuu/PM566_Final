@@ -279,7 +279,7 @@ ggplotly(f2)
 
 <br>
 
-### 3. The Relationship between P&I (Pneumonia and Influenza) death rates and flu vaccination rates
+### 3. The Relationship between P&I (Pneumonia and Influenza) death rates and flu vaccination  rates
 
 ```{r, out.width ="75%", out.height= "75%", echo=FALSE}
 f3 <- combined_dat %>% 
