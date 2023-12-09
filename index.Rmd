@@ -1,5 +1,5 @@
 ---
-title: "Anlysis the relationship between influenza vaccination coverage and Pneumonia and Influenza (P&I) mortality rates by state in the US (2009-2019)."
+title: "Anlysis   the   relationship   between   influenza   vaccination   coverage   and   Pneumonia   and   Influenza (P&I)   mortality   rates   by   state   in   the   US (2009-2019)."
 author: "Wenjia Lu"
 output: 
   html_document:
@@ -37,7 +37,7 @@ There are two datasets included in this analysis:
 
 <br>
 
-## **Interactive Visualizations**
+## **Results**
 
 ```{r, message=FALSE, echo=FALSE, warning=FALSE, include=FALSE}
 
@@ -52,7 +52,6 @@ library(lubridate)
 library(usmap)
 library(plotly)
 library(DT)
-
 ```
 
 ```{r, include=FALSE} 
@@ -149,16 +148,109 @@ combined_dat$deaths_prop[is.na(combined_dat$deaths_prop)] <- mean(combined_dat$d
 
 <br>
 
-### 1.Yearly Fluctuations of P&I (Pneumonia and Influenza) death rates and flu vaccination rates
+### 1. Regional variations in P&I (Pneumonia and Influenza) death rates and flu vaccination rates
+
+## {.tabset}
+
+### Vaccination Proportion
+
+```{r, echo=FALSE}
+set_map_details <- list(
+  scope = 'usa',
+  projection = list(type = 'albers usa'),
+  showlakes = TRUE,
+  lakecolor = toRGB('white')
+)
+
+vac_map <- combined_dat %>% select(state, vac_prop)
+
+st_crosswalk <- tibble(state = state.name) %>%
+  bind_cols(tibble(abb = state.abb))
+vac_map2 <- left_join(vac_map, st_crosswalk, by="state")
+vac_map2$state.name <- vac_map2$state
+vac_map2$state <- vac_map2$abb
+vac_map2$abb <- NULL
+vac_map2$hover <- with(vac_map, paste(state.name, '<br>', "Vaccination Proportion (%):", vac_prop))
+
+f6 <- plot_geo(vac_map2, locationmode = 'USA-states') %>%
+  add_trace(
+    z = ~vac_prop,
+    text = ~hover,
+    locations = ~state,
+    color = ~vac_prop,
+    colors = 'Reds'
+  )
+
+f6 <- f6 %>% colorbar(title = "Vaccination Proportion (%)")
+f6 <- f6 %>% layout(
+  title = "Fully Flu Vaccination Proportion in Different States in the United States",
+  geo = set_map_details
+)
+
+f6
+```
+
+### Death Proportion
 
 ```{r, out.width ="75%", out.height= "75%", echo=FALSE}
-f3 <- ggplot(combined_dat, aes(x = season)) +
-  geom_point(aes(y = deaths_prop, color = "Deaths Proportion (%)"), size = 3) +
-  geom_point(aes(y = vac_prop, color = "Vaccination Proportion (%)"), size = 3) +
+death_map <- combined_dat %>% select(state, deaths_prop)
+
+st_crosswalk <- tibble(state = state.name) %>%
+  bind_cols(tibble(abb = state.abb))
+death_map2 <- left_join(death_map, st_crosswalk, by="state")
+death_map2$state.name <- death_map2$state
+death_map2$state <- death_map2$abb
+death_map2$abb <- NULL
+death_map2$hover <- with(death_map, paste(state.name, '<br>', "Death Proportion:", deaths_prop))
+
+f5 <- plot_geo(death_map2, locationmode = 'USA-states') %>%
+  add_trace(
+    z = ~deaths_prop,
+    text = ~hover,
+    locations = ~state,
+    color = ~deaths_prop,
+    colors = 'Blues'
+  )
+
+f5 <- f5 %>% colorbar(title = "Deaths Proportion (%)")
+f5 <- f5 %>% layout(
+  title = "P&I Deaths Proportion in Different States in the United States",
+  geo = set_map_details
+)
+
+f5
+```
+
+## {-}
+
+* Hawaii and Louisiana have the highest and lowest P&I deaths rates. PA-Rest of state and Puerto Rico have the highest and lowest proportion of flu vaccination rates. 
+* Hawaii, North Dakota and California have the highest P&I deaths proportion. At the same time, Louisiana, Florida and Oregon have the lowest P&I deaths proportion.
+
+<br>
+
+### 2. Yearly Fluctuations of P&I (Pneumonia and Influenza) death rates and flu vaccination rates
+
+```{r, echo=FALSE}
+f1 <- ggplot(combined_dat, aes(x = season)) +
+  geom_point(aes(y = vac_prop, color = "Vaccination Proportion (%)"), size = 2) +
   scale_color_manual(
-    values = c("Deaths Proportion (%)" = "blue",  "Vaccination Proportion (%)" = "red"),
+    values = c("Vaccination Proportion (%)" = "red"),
     name = "") +
-  ggtitle("Fully Flu Vaccination and P&I Deaths Proportion by Year(2009-2019)") +
+  ggtitle("Fully Flu Vaccination Proportion by Year(2009-2019)") +
+  labs(
+    x = "Year",
+    y = "Proportion (%)",
+    color = "Legend"
+  ) + 
+  theme(legend.position = "top") +
+  scale_y_continuous(breaks = seq(0, 70, by = 10))
+
+f2 <- ggplot(combined_dat, aes(x = season)) +
+  geom_point(aes(y = deaths_prop, color = "Deaths Proportion (%)"), size = 2) +
+  scale_color_manual(
+    values = c("Deaths Proportion (%)" = "blue"),
+    name = "") +
+  ggtitle("P&I Deaths Proportion by Year(2009-2019)") +
   labs(
     x = "Year",
     y = "Proportion (%)",
@@ -171,22 +263,26 @@ f3 <- ggplot(combined_dat, aes(x = season)) +
 
 ## {.tabset}
 
-### Yearly Fluctuations
-
+### Vaccination Proportion
 ```{r echo=FALSE}
-ggplotly(f3) 
+ggplotly(f1)
+```
+
+### Death Proportion
+```{r echo=FALSE}
+ggplotly(f2) 
 ```
 
 ## {-}
 
-The mortality rate show some variability across the years from 2009 to 2019, and the vaccination rate changed slightly, especially from 2017 to 2019 when it increased significantly.
+* The mortality rate show some variability across the years from 2009 to 2019, and the vaccination rate changed slightly, especially from 2017 to 2019 when it increased significantly.
 
 <br>
 
-### 2.The  between P&I (Pneumonia and Influenza) death rates and flu vaccination rates
+### 3. The Relationship between P&I (Pneumonia and Influenza) death rates and flu vaccination rates
 
 ```{r, out.width ="75%", out.height= "75%", echo=FALSE}
-f4 <- combined_dat %>% 
+f3 <- combined_dat %>% 
   ggplot(mapping = aes(x = vac_prop, y = deaths_prop)) + 
   geom_point(mapping = aes(color = state)) + 
   geom_smooth(method = lm, se = FALSE) + 
@@ -201,28 +297,29 @@ f4 <- combined_dat %>%
 
 ## {.tabset}
 
-### Correlation
+### Correlation by State
 
 ```{r echo=FALSE}
-ggplotly(f4) 
+ggplotly(f3) 
 ```
 
 ## {-}
 
-There is a significant positive relationship between fully Vaccination proportion and P&I deaths proportion, indicating that higher vaccination coverage tends to be associated with higher mortality rates due to pneumonia and influenza.
+* There is a significant positive relationship between fully Vaccination proportion and P&I deaths proportion, indicating that higher vaccination coverage tends to be associated with higher mortality rates due to pneumonia and influenza.
 
-```{r, out.width ="75%", out.height= "75%", echo=FALSE}
+```{r, out.width ="75%", out.height= "75%", echo=FALSE, warning=FALSE}
 cor <- combined_dat %>%
   group_by(state) %>%
   summarize(cor = cor(deaths_prop, vac_prop)) %>%
   filter(!is.na(cor)) %>%
+  mutate(cor = round(cor, 3)) %>%
   arrange(desc(cor))
 
 ```
 
 ## {.tabset}
 
-### Correlation
+### Correlation Table
 
 ```{r echo=FALSE}
 datatable(cor, rownames = F) 
@@ -230,8 +327,10 @@ datatable(cor, rownames = F)
 
 ## {-}
 
-Utah has the strongest positively correlation bewteen flu vaccination rates and P&I deaths rates and District of Columbia	has the strongest negatively correlation.
+* Utah has the strongest positively correlation bewteen flu vaccination rates and P&I deaths rates and District of Columbia	has the strongest negatively correlation.
 
+
+## {-}
 ## **Conclusion**
 
 In summary, the data suggests that there are significant state variations in P&I deaths and flu vaccination rates in the U.S. with year-to-year fluctuations. While vaccination rates have generally improved in recent years, there are some exceptions. The correlation analysis highlights that vaccination efforts can have a positive impact on reducing P&I deaths in some states. However, specific factors contributing to these trends would require further investigation.
